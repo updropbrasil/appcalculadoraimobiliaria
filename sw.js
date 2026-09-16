@@ -1,10 +1,10 @@
 // Service Worker - Calculadora de Fluxo de Pagamento
 // Troque a versão (v1 -> v2 ...) sempre que atualizar o app para forçar a atualização do cache.
-const CACHE = "fluxo-v1";
+const CACHE = "fluxo-v11";
 const ASSETS = [
   "./",
   "./index.html",
-  "./manifest.webmanifest",
+  "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
   "./icon-maskable-512.png"
