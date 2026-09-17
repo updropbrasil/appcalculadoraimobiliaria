@@ -162,7 +162,17 @@
       <h1>Calculadora de Fluxo de Pagamento</h1>
       <div class="sub">Monte o fluxo, ajuste tudo na hora e exporte pro cliente.</div>
     </div>
-    <button class="themebtn" id="themeBtn">🌙 Escuro</button>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="seg" id="curSeg" style="margin:0">
+          <button data-c="BRL" class="on">R$</button>
+          <button data-c="USD">US$</button>
+          <button data-c="EUR">€</button>
+        </div>
+        <button class="themebtn" id="themeBtn">🌙 Escuro</button>
+      </div>
+      <div id="curNote" style="font-size:11px;color:var(--muted)"></div>
+    </div>
   </div>
 
   <div class="grid">
@@ -401,8 +411,12 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const BRL = n => "R$ " + (Math.round(n)).toLocaleString("pt-BR");
-const BRL2 = n => (Math.round(n)).toLocaleString("pt-BR");
+// ---- moeda (conversão só do que é EXIBIDO; entradas continuam em R$) ----
+let CUR = {code:"BRL", sym:"R$", loc:"pt-BR"};
+let RATES = {USD:5.15, EUR:5.91}; // R$ por 1 unidade (fallback; atualizado ao vivo)
+const curVal = n => CUR.code==="BRL" ? n : n/(RATES[CUR.code]||1);
+const BRL = n => CUR.sym + " " + (Math.round(curVal(n))).toLocaleString(CUR.loc);
+const BRL2 = n => (Math.round(curVal(n))).toLocaleString(CUR.loc);
 
 // parse number from BR-formatted string ("500.000,50" -> 500000.5)
 function num(v){
@@ -783,6 +797,7 @@ function buildEstudo(){
   const valorizA=(+$v("pValoriz")||0)/100, valorizM=Math.pow(1+valorizA,1/12)-1;
   const anos=Math.max(1,+$v("pHorizonte")||5);
   const M=Math.max(1,+$v("pMesesEntrega")||s.N);
+  const chavesCorr = s.chaves*Math.pow(1+inccM, M); // saldo das chaves corrigido pelo INCC até a entrega
   const jurosPos=(+$v("pJurosPos")||0)/100, effPos=jurosPos+igpmM;
   const prazoFin=Math.max(1,+$v("pPrazoFin")||120);
   const adm=(+$v("pAdm")||0)/100, plat=(+$v("pPlat")||0)/100;
@@ -792,7 +807,7 @@ function buildEstudo(){
   const capital0=num($v("pCapital")), renda=num($v("pRenda")), cap=perfil==="capital";
   const freq=+$("interFreq").value||0, reforcoMes={};
   if(freq>0 && s.interArr) s.interArr.forEach((v,i)=>{ const m=(i+1)*freq; if(m<=M) reforcoMes[m]=(reforcoMes[m]||0)+v; });
-  const prestacao=pmt(s.chaves, effPos, prazoFin);
+  const prestacao=pmt(chavesCorr, effPos, prazoFin);
   const postN=anos*12, totalMonths=M+postN;
 
   const rows=[];
@@ -808,7 +823,7 @@ function buildEstudo(){
     else { doBolso+=saida; if(renda>0){ compr=saida/renda; if(compr>maxComprom)maxComprom=compr; } }
     rows.push({lbl:"Obra",mes:k,saida,entra,bolso,saldo:saldoCap,compr});
   }
-  saldoFin=s.chaves;
+  saldoFin=chavesCorr;
   for(let j=1;j<=postN;j++){
     const mes=M+j; imovelVal*=(1+valorizM);
     const juros=saldoFin*effPos; saldoFin=Math.max(0,saldoFin-(prestacao-juros));
@@ -837,6 +852,7 @@ function buildEstudo(){
 
   $("estCards").innerHTML=
     estCard("Valor do imóvel hoje",BRL(s.T),"")+
+    estCard("Chaves na entrega (corrigido)",BRL(chavesCorr),BRL2(s.chaves)+" hoje + INCC "+M+" meses (+"+((Math.pow(1+inccM,M)-1)*100).toFixed(0)+"%)")+
     estCard("Do seu bolso (estim.)",BRL(doBolso),pctBolso.toFixed(0)+"% do valor do imóvel")+
     estCard("Renda líquida/mês",BRL(aluguelLiq),receita>0?"após adm, plataforma e custos":"informe o aluguel")+
     estCard("Imóvel valorizado",BRL(imovelVal),"premissa: "+(valorizA*100).toFixed(1)+"%/ano")+
@@ -866,7 +882,7 @@ function buildEstudo(){
     ? "💰 Aplicando "+BRL(capital0)+" no CDB, o rendimento vai pagando o fluxo — seu desembolso real do bolso na obra é ~<b>"+BRL(doBolso)+"</b>. Quando a obra fica pronta, entram a <b>renda de aluguel</b> e a <b>valorização</b>, e o imóvel <b>abre distância</b> do CDB: em "+anos+" anos, <b>"+BRL(patImovel)+"</b> no imóvel vs <b>"+BRL(patCDB)+"</b> só no CDB."
     : "📅 Comprometimento máximo de <b>"+(maxComprom*100).toFixed(0)+"%</b> da renda. Você desembolsa ~<b>"+BRL(doBolso)+"</b> e forma patrimônio de <b>"+BRL(patImovel)+"</b> em "+anos+" anos — retorno estimado de <b>"+retorno.toFixed(0)+"%</b> sobre o investido.";
 
-  estudoResumo={cap,capital0,doBolso,aluguelLiq,maxComprom,renda,anos,imovelVal,patImovel,patCDB,dif,pctBolso,retorno};
+  estudoResumo={cap,capital0,doBolso,aluguelLiq,maxComprom,renda,anos,imovelVal,patImovel,patCDB,dif,pctBolso,retorno,chavesCorr,chavesNom:s.chaves,mesesEntrega:M};
 }
 function estCard(k,v,sub,win,wide){ return "<div class='est-card"+(win?" win":"")+(wide?" wide":"")+"'><div class='k'>"+k+"</div><div class='val'>"+v+"</div>"+(sub?"<div class='sub2'>"+sub+"</div>":"")+"</div>"; }
 
@@ -875,6 +891,7 @@ function estudoText(){
   if(estudoResumo){
     const e=estudoResumo;
     t+="\n————————————\n📊 *ESTUDO DE INVESTIMENTO*\n";
+    t+="Chaves na entrega (corrigido p/ INCC): *"+BRL(e.chavesCorr)+"* ("+BRL2(e.chavesNom)+" hoje)\n";
     t+="Do seu bolso (estim.): *"+BRL(e.doBolso)+"* ("+e.pctBolso.toFixed(0)+"% do imóvel)\n";
     t+="Renda líquida/mês (após entrega): *"+BRL(e.aluguelLiq)+"*\n";
     t+="Imóvel em "+e.anos+" anos: *"+BRL(e.imovelVal)+"*\n";
@@ -896,6 +913,31 @@ document.querySelectorAll("#perfilSeg button").forEach(b=>{ b.onclick=()=>{
 ["pCapital","pRenda","pPctCdi","pCdi","pIncc","pIgpm","pMesesEntrega","pJurosPos","pPrazoFin","pAluguel","pOcup","pAdm","pPlat","pCustos","pValoriz","pHorizonte","pIrAluguel","pIrCdb"].forEach(id=>$(id).addEventListener("input",buildEstudo));
 $("estCopiar").onclick=()=>{ const t=estudoText(); navigator.clipboard.writeText(t).then(()=>toast("Fluxo + estudo copiado!"),()=>{const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();toast("Copiado!");}); };
 $("estPrint").onclick=()=>window.print();
+
+// ---- troca de moeda ----
+function rerender(){
+  calc();
+  if(state && state.T) buildEstudo();
+  if($("panelMsg").style.display!=="none") $("waPreview").textContent=waText();
+}
+function updCurNote(){
+  const n=$("curNote");
+  if(CUR.code==="BRL"){ n.textContent=""; return; }
+  n.textContent = CUR.sym+" 1 = R$ "+(RATES[CUR.code]||0).toFixed(2).replace(".",",")+" (aprox.)";
+}
+document.querySelectorAll("#curSeg button").forEach(b=>{ b.onclick=()=>{
+  document.querySelectorAll("#curSeg button").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+  const c=b.dataset.c;
+  CUR = c==="USD" ? {code:"USD",sym:"US$",loc:"en-US"}
+      : c==="EUR" ? {code:"EUR",sym:"€",loc:"pt-PT"}
+      : {code:"BRL",sym:"R$",loc:"pt-BR"};
+  updCurNote(); rerender();
+};});
+// cotação ao vivo (AwesomeAPI); cache-buster evita valor preso no SW; fallback se offline
+fetch("https://economia.awesomeapi.com.br/last/USD-BRL,EUR-BRL?t="+Date.now())
+  .then(r=>r.json())
+  .then(d=>{ if(d.USDBRL) RATES.USD=+d.USDBRL.bid; if(d.EURBRL) RATES.EUR=+d.EURBRL.bid; updCurNote(); if(CUR.code!=="BRL") rerender(); })
+  .catch(()=>{});
 
 // init
 suggestInter(); calc();
